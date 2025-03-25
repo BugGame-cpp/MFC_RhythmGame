@@ -74,6 +74,10 @@ CMFC리듬게임Dlg::CMFC리듬게임Dlg(CWnd* pParent /*=nullptr*/)
     , m_ComboAnimTime(0.0)           
     , m_ComboAnimDuration(0.3)       
     , m_LastAnimatedCombo(0)         
+    , m_BackgroundLevel(0)           
+    , m_LastBackgroundCombo(0)       
+    , m_BackgroundTransitionTime(0.0) 
+    , m_BackgroundTransitionDuration(1.0) 
 {
     m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
     m_MusicPath = _T("");
@@ -333,9 +337,16 @@ void CMFC리듬게임Dlg::InitGame()
     m_MaxCombo = 0;
     m_MusicPlaying = false;
 
-    // 콤보 애니메이션 초기화 (이 부분 추가)
+    // 콤보 애니메이션 초기화 
     m_ComboAnimTime = 0.0;
     m_LastAnimatedCombo = 0;
+
+
+    // 배경 변화 초기화 
+    m_BackgroundLevel = 0;
+    m_LastBackgroundCombo = 0;
+    m_BackgroundTransitionTime = 0.0;
+
 
     // 노트 데이터 로드
     LoadNotes();
@@ -412,6 +423,15 @@ void CMFC리듬게임Dlg::UpdateNotes()
             }
         }
     }
+    // 히트 이펙트 업데이트
+    for (auto it = m_HitEffects.begin(); it != m_HitEffects.end(); ) {
+        if (m_GameTime - it->startTime > it->duration) {
+            it = m_HitEffects.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
 }
 
 // 키 입력 처리
@@ -447,10 +467,24 @@ void CMFC리듬게임Dlg::ProcessKeyInput(int lane)
             m_Combo = 0;  // 미스 시 콤보 초기화
             break;
         }
-        // 콤보가 증가하면 애니메이션 시작 (이 부분 추가)
+        // 콤보가 증가하면 애니메이션 시작
         if (m_Combo > m_LastAnimatedCombo) {
             m_ComboAnimTime = m_GameTime;
             m_LastAnimatedCombo = m_Combo;
+        }
+
+        // 10콤보마다 배경 변화 
+        if (m_Combo >= m_LastBackgroundCombo + 10 && judge != Judgment::MISS) {
+            m_BackgroundLevel = m_Combo / 10;  // 10콤보마다 레벨업
+            m_LastBackgroundCombo = m_Combo - (m_Combo % 10);  // 현재 레벨에 해당하는 콤보 값
+            m_BackgroundTransitionTime = m_GameTime;  // 배경 전환 시작 시간 설정
+        }
+
+        // 콤보가 0이 되면 배경도 초기화 
+        if (m_Combo == 0) {
+            m_BackgroundLevel = 0;
+            m_LastBackgroundCombo = 0;
+            m_BackgroundTransitionTime = m_GameTime;
         }
 
         // 최대 콤보 갱신
@@ -463,6 +497,17 @@ void CMFC리듬게임Dlg::ProcessKeyInput(int lane)
         // 판정 결과 표시
         m_LastJudgment = judge;
         m_JudgmentShowTime = m_GameTime + 0.5;  // 0.5초간 판정 표시
+
+        // 판정에 따른 점수 부여 부분 끝에 추가 (미스가 아닌 경우만 이펙트 추가)
+        if (judge != Judgment::MISS) {
+            // 히트 이펙트 추가
+            HitEffect effect;
+            effect.lane = lane;
+            effect.startTime = m_GameTime;
+            effect.duration = 0.2; // 0.2초로 짧게 설정
+            effect.judgment = judge;
+            m_HitEffects.push_back(effect);
+        }
     }
 }
 
@@ -517,6 +562,9 @@ void CMFC리듬게임Dlg::DrawGame(CDC* pDC)
     // 노트 그리기
     DrawNotes(pDC);
 
+    // 이펙트 그리기 (노트 위에 그려야 함)
+    DrawHitEffects(pDC);
+
     // 점수 표시
     DrawScore(pDC);
 
@@ -530,21 +578,152 @@ void CMFC리듬게임Dlg::DrawGame(CDC* pDC)
 // 배경 그리기
 void CMFC리듬게임Dlg::DrawBackground(CDC* pDC, const CRect& rect)
 {
-    // 그라데이션 배경 (어두운 파란색에서 검은색으로)
-    for (int y = 0; y < rect.Height(); y++)
-    {
-        int blue = max(0, 50 - y / 10);
-        COLORREF color = RGB(0, 0, blue);
+    // 전환 효과를 위한 알파값 계산 (0.0~1.0)
+    double alpha = 1.0;
+    if (m_GameTime - m_BackgroundTransitionTime < m_BackgroundTransitionDuration) {
+        alpha = (m_GameTime - m_BackgroundTransitionTime) / m_BackgroundTransitionDuration;
+    }
+
+    // 배경 레벨에 따른 색상 설정
+    COLORREF baseColor1, baseColor2;
+    int starCount = 100;  // 기본 별 개수
+
+    switch (m_BackgroundLevel) {
+    case 0:  // 기본 배경 (어두운 파란색 -> 검은색)
+        baseColor1 = RGB(0, 0, 50);
+        baseColor2 = RGB(0, 0, 0);
+        break;
+    case 1:  // 10~19 콤보 (파란색 + 보라색 조합)
+        baseColor1 = RGB(20, 0, 60);
+        baseColor2 = RGB(0, 0, 40);
+        starCount = 150;
+        break;
+    case 2:  // 20~29 콤보 (보라색 + 빨간색 조합)
+        baseColor1 = RGB(40, 0, 70);
+        baseColor2 = RGB(20, 0, 30);
+        starCount = 200;
+        break;
+    case 3:  // 30~39 콤보 (빨간색 + 주황색 조합)
+        baseColor1 = RGB(60, 0, 60);
+        baseColor2 = RGB(30, 0, 30);
+        starCount = 250;
+        break;
+    case 4:  // 40~49 콤보 (주황색 + 노란색 조합)
+        baseColor1 = RGB(70, 20, 50);
+        baseColor2 = RGB(35, 10, 30);
+        starCount = 300;
+        break;
+    default:  // 50+ 콤보 (색상 변화가 더 화려해짐)
+        // 시간에 따라 변화하는 화려한 색상
+        int time = static_cast<int>(m_GameTime * 10) % 100;
+        baseColor1 = RGB(
+            80 + time / 2,
+            40 + (100 - time) / 2,
+            60 + time / 3
+        );
+        baseColor2 = RGB(
+            40 + time / 4,
+            20 + (100 - time) / 4,
+            30 + time / 6
+        );
+        starCount = 350 + m_BackgroundLevel * 10;  // 더 많은 별
+        break;
+    }
+
+    // 그라데이션 배경 그리기
+    for (int y = 0; y < rect.Height(); y++) {
+        double ratio = static_cast<double>(y) / rect.Height();
+
+        int r = static_cast<int>(GetRValue(baseColor1) * (1.0 - ratio) + GetRValue(baseColor2) * ratio);
+        int g = static_cast<int>(GetGValue(baseColor1) * (1.0 - ratio) + GetGValue(baseColor2) * ratio);
+        int b = static_cast<int>(GetBValue(baseColor1) * (1.0 - ratio) + GetBValue(baseColor2) * ratio);
+
+        COLORREF color = RGB(r, g, b);
         pDC->FillSolidRect(0, y, rect.Width(), 1, color);
     }
 
-    // 별 효과 추가 (랜덤 위치에 작은 흰색 점)
-    srand(static_cast<unsigned int>(time(NULL)));
-    for (int i = 0; i < 100; i++)
-    {
+    // 별 효과 추가 (레벨에 따라 더 많은 별과 다양한 크기의 별 생성)
+    srand(static_cast<unsigned int>(10));  // 고정된 시드 사용 (깜빡임 방지)
+
+    for (int i = 0; i < starCount; i++) {
         int x = rand() % rect.Width();
         int y = rand() % rect.Height();
-        pDC->SetPixel(x, y, RGB(255, 255, 255));
+        int size = 1;
+
+        // 레벨이 높을수록 큰 별이 나올 확률 증가
+        int sizeRandom = rand() % 100;
+        if (m_BackgroundLevel > 0 && sizeRandom < m_BackgroundLevel * 5) {
+            size = (sizeRandom % 3) + 2;  // 2~4 크기의 별
+
+            // 큰 별은 반짝이는 효과 (시간에 따라 밝기 변경)
+            int brightness = 150 + static_cast<int>(50 * sin(m_GameTime * 3 + i));
+            brightness = min(255, max(100, brightness));
+
+            COLORREF starColor = RGB(brightness, brightness, brightness);
+
+            // 별 그리기 (크기에 따라 점 또는 작은 원)
+            if (size == 2) {
+                pDC->SetPixel(x, y, starColor);
+                pDC->SetPixel(x + 1, y, starColor);
+                pDC->SetPixel(x, y + 1, starColor);
+                pDC->SetPixel(x + 1, y + 1, starColor);
+            }
+            else {
+                // 작은 원 그리기
+                CBrush brush(starColor);
+                CBrush* pOldBrush = pDC->SelectObject(&brush);
+                pDC->Ellipse(x - size / 2, y - size / 2, x + size / 2, y + size / 2);
+                pDC->SelectObject(pOldBrush);
+            }
+        }
+        else {
+            // 일반 별 (작은 흰색 점)
+            pDC->SetPixel(x, y, RGB(255, 255, 255));
+        }
+    }
+
+    // 레벨 5 이상에서 추가 효과: 파동 효과
+    if (m_BackgroundLevel >= 5) {
+        // 여러 개의 원형 파동 그리기
+        int waveCount = 3;
+        for (int w = 0; w < waveCount; w++) {
+            // 파동의 중심점
+            int centerX = rect.Width() / 2;
+            int centerY = rect.Height() / 2;
+
+            // 시간과 파동 인덱스에 따른 반지름 계산
+            double phase = (m_GameTime * 0.5 + w * 1.0) - floor(m_GameTime * 0.5 + w * 1.0);
+            int radius = static_cast<int>(phase * rect.Width() * 0.8);
+
+            // 파동의 두께와 투명도 계산
+            int thickness = 2;
+            int alpha = static_cast<int>((1.0 - phase) * 100);
+
+            // 파동 색상 (레벨에 따라 다른 색상)
+            COLORREF waveColor;
+            switch ((m_BackgroundLevel + w) % 6) {
+            case 0: waveColor = RGB(255, 50, 50); break;   // 빨강
+            case 1: waveColor = RGB(255, 150, 50); break;  // 주황
+            case 2: waveColor = RGB(255, 255, 50); break;  // 노랑
+            case 3: waveColor = RGB(50, 255, 50); break;   // 초록
+            case 4: waveColor = RGB(50, 50, 255); break;   // 파랑
+            case 5: waveColor = RGB(150, 50, 255); break;  // 보라
+            }
+
+            // 파동 그리기 (원 테두리)
+            CPen pen(PS_SOLID, thickness, waveColor);
+            CPen* pOldPen = pDC->SelectObject(&pen);
+            pDC->SelectStockObject(NULL_BRUSH);  // 내부는 투명하게
+
+            pDC->Ellipse(
+                centerX - radius,
+                centerY - radius * 0.75,  // 약간 타원형으로
+                centerX + radius,
+                centerY + radius * 0.75
+            );
+
+            pDC->SelectObject(pOldPen);
+        }
     }
 }
 
@@ -894,6 +1073,92 @@ void CMFC리듬게임Dlg::DrawCombo(CDC* pDC)
         }
 
         pDC->SelectObject(pOldFont);
+    }
+}
+
+void CMFC리듬게임Dlg::DrawHitEffects(CDC* pDC)
+{
+    CRect rect;
+    GetClientRect(&rect);
+
+    int centerX = rect.Width() / 2;
+    int laneStartX = centerX - (LANE_COUNT * LANE_WIDTH) / 2;
+
+    for (const auto& effect : m_HitEffects) {
+        double progress = (m_GameTime - effect.startTime) / effect.duration;
+        if (progress < 1.0) {
+            int laneX = laneStartX + effect.lane * LANE_WIDTH;
+            int laneCenter = laneX + LANE_WIDTH / 2;
+
+            // 판정에 따른 색상 결정 - 흰색 성분 없이 순수 색상만 사용
+            COLORREF color;
+            switch (effect.judgment) {
+            case Judgment::PERFECT: color = RGB(180, 80, 200); break;  // 보라색
+            case Judgment::GREAT:   color = RGB(50, 180, 200); break;  // 청록색
+            case Judgment::GOOD:    color = RGB(70, 120, 200); break;  // 파랑색
+            default:                color = RGB(150, 150, 150); break; // 회색
+            }
+
+            // 효과 크기 계산
+            double sizeProgress = sin(progress * 3.14159);
+            int maxSize = LANE_WIDTH * 1.5;
+            int size = static_cast<int>(maxSize * sizeProgress);
+
+            // 원형 효과 - 밝은 흰색 효과 대신 색상 그라데이션 사용
+            for (int i = 0; i < 3; i++) {
+                int circleSize = size - i * 10;
+                if (circleSize > 0) {
+                    // 투명도 효과 (점점 사라지게)
+                    int intensity = static_cast<int>((1.0 - progress) * 255);
+
+                    // 각 원마다 색상 조절 (밝은 흰색 대신 색상의 밝기만 약간 조절)
+                    int r = GetRValue(color) + (2 - i) * 20;
+                    int g = GetGValue(color) + (2 - i) * 20;
+                    int b = GetBValue(color) + (2 - i) * 20;
+
+                    r = min(255, r);
+                    g = min(255, g);
+                    b = min(255, b);
+
+                    COLORREF circleColor = RGB(r, g, b);
+
+                    // 테두리와 내부 채우기 모두 동일 색상 사용
+                    CPen pen(PS_SOLID, 1, circleColor);
+                    CPen* pOldPen = pDC->SelectObject(&pen);
+
+                    CBrush brush(circleColor);
+                    CBrush* pOldBrush = pDC->SelectObject(&brush);
+
+                    // 원 그리기 (내부 채우기)
+                    pDC->Ellipse(
+                        laneCenter - circleSize / 2, JUDGMENT_LINE_Y - circleSize / 2,
+                        laneCenter + circleSize / 2, JUDGMENT_LINE_Y + circleSize / 2
+                    );
+
+                    pDC->SelectObject(pOldPen);
+                    pDC->SelectObject(pOldBrush);
+                }
+            }
+
+            // 빛줄기 효과는 기존 유지하되 색상만 변경
+            CPen lightPen(PS_SOLID, 2, color);
+            CPen* pOldPen = pDC->SelectObject(&lightPen);
+
+            int lightLength = static_cast<int>(LANE_WIDTH * 1.0 * sizeProgress);
+            int lightWidth = static_cast<int>(LANE_WIDTH * 0.6 * (1.0 - progress));
+
+            // 위쪽 빛줄기
+            pDC->MoveTo(laneCenter - lightWidth / 2, JUDGMENT_LINE_Y);
+            pDC->LineTo(laneCenter, JUDGMENT_LINE_Y - lightLength);
+            pDC->LineTo(laneCenter + lightWidth / 2, JUDGMENT_LINE_Y);
+
+            // 아래쪽 빛줄기
+            pDC->MoveTo(laneCenter - lightWidth / 2, JUDGMENT_LINE_Y);
+            pDC->LineTo(laneCenter, JUDGMENT_LINE_Y + lightLength);
+            pDC->LineTo(laneCenter + lightWidth / 2, JUDGMENT_LINE_Y);
+
+            pDC->SelectObject(pOldPen);
+        }
     }
 }
 

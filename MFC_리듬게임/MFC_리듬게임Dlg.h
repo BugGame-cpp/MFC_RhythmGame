@@ -33,6 +33,13 @@ enum class Judgment {
     PERFECT
 };
 
+// 노트 히트 이펙트를 위한 구조체
+struct HitEffect {
+    int lane;           // 이펙트가 표시될 레인
+    double startTime;   // 이펙트 시작 시간
+    double duration;    // 이펙트 지속 시간
+    Judgment judgment;  // 판정 결과 (색상 결정에 사용)
+};
 
 
 // CMFC리듬게임Dlg 대화 상자
@@ -113,6 +120,7 @@ private:
     void DrawScore(CDC* pDC);
     void DrawJudgment(CDC* pDC);
     void DrawCombo(CDC* pDC);       // 콤보 표시 함수 추가
+    void DrawHitEffects(CDC* pDC); // 노트 히트 이펙트 그리기
 
     // 게임 로직 함수
     void InitGame();
@@ -131,6 +139,14 @@ private:
     double m_ComboAnimTime;       // 콤보 애니메이션 시작 시간
     double m_ComboAnimDuration;   // 콤보 애니메이션 지속 시간
     int m_LastAnimatedCombo;      // 마지막으로 애니메이션 된 콤보 값
+    // 이펙트 관련 변수
+    std::vector<HitEffect> m_HitEffects;  // 히트 이펙트 목록
+
+    // 배경 변화 관련 변수 (여기에 추가)
+    int m_BackgroundLevel;          // 현재 배경 레벨 (10콤보마다 증가)
+    int m_LastBackgroundCombo;      // 마지막 배경 변화가 일어난 콤보 수
+    double m_BackgroundTransitionTime; // 배경 전환 시작 시간
+    double m_BackgroundTransitionDuration; // 배경 전환 지속 시간
 
 public:
     afx_msg void OnTimer(UINT_PTR nIDEvent);
