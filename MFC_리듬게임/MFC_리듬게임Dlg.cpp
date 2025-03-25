@@ -129,6 +129,11 @@ BOOL CMFC리듬게임Dlg::OnInitDialog()
     pCombo->AddString(_T("LOVE DIVE"));
     pCombo->AddString(_T("Whiplash"));
     pCombo->AddString(_T("HAPPY"));
+    pCombo->AddString(_T("Carly Rae Jepsen - Call Me Maybe"));
+    pCombo->AddString(_T("Dont Look Back In Anger"));
+    pCombo->AddString(_T("Shape Of You"));
+    pCombo->AddString(_T("Viva la Vida"));
+
 
     // 기본 선택
     pCombo->SetCurSel(0);
@@ -286,6 +291,14 @@ void CMFC리듬게임Dlg::OnBnClickedButtonStart()
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Whiplash.wav");
     else if (songName == _T("HAPPY"))
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\HAPPY.wav");
+    else if (songName == _T("Carly Rae Jepsen - Call Me Maybe"))
+        m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Carly Rae Jepsen - Call Me Maybe.wav");
+    else if (songName == _T("Dont Look Back In Anger"))
+        m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Dont Look Back In Anger.wav");
+    else if (songName == _T("Shape Of You"))
+        m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Shape Of You.wav");
+    else if (songName == _T("Viva la Vida"))
+        m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Viva la Vida.wav");
     
     // 난이도 콤보박스에서 선택값 읽기
     CComboBox* pDiffCombo = (CComboBox*)GetDlgItem(1004);
