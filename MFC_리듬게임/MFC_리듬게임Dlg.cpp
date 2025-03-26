@@ -106,12 +106,19 @@ BOOL CMFC리듬게임Dlg::OnInitDialog()
     CDialogEx::OnInitDialog();
 
     // 대화상자 크기 설정
-    SetWindowPos(NULL, 0, 0, 800, 600, SWP_NOMOVE | SWP_NOZORDER);
+    SetWindowPos(NULL, 0, 0, 900, 800, SWP_NOMOVE | SWP_NOZORDER);
+
+    // 화면 크기에 맞게 판정선 위치 조정
+    CRect rect;
+    GetClientRect(&rect);
+    int webViewHeight = rect.Height() * 2 / 5;  // 40% 높이
+    const_cast<int&>(JUDGMENT_LINE_Y) = webViewHeight + (rect.Height() - webViewHeight) * 2 / 3;
 
     // 시작 버튼 생성 및 스타일 설정
     CButton* pButton = new CButton();
     pButton->Create(_T("게임 시작"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        CRect(350, 500, 450, 530), this, IDC_BUTTON_START);
+        CRect(rect.Width() / 2 - 70, rect.Height() - 100, rect.Width() / 2 + 70, rect.Height() - 70),
+        this, IDC_BUTTON_START);
    
 
     // 버튼 폰트 설정
@@ -123,7 +130,7 @@ BOOL CMFC리듬게임Dlg::OnInitDialog()
     // 노래 선택 버튼 생성
     CComboBox* pCombo = new CComboBox();
     pCombo->Create(WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
-        CRect(260, 0, 420, 495), this, IDC_COMBO_SONG_LIST);
+        CRect(20, rect.Height() - 100, 180, rect.Height() - 70), this, IDC_COMBO_SONG_LIST);
 
     // 노래 목록 추가
     pCombo->AddString(_T("LOVE DIVE"));
@@ -133,21 +140,34 @@ BOOL CMFC리듬게임Dlg::OnInitDialog()
     pCombo->AddString(_T("Dont Look Back In Anger"));
     pCombo->AddString(_T("Shape Of You"));
     pCombo->AddString(_T("Viva la Vida"));
+    pCombo->AddString(_T("희망"));
+    pCombo->AddString(_T("캐논"));
+    pCombo->AddString(_T("비밀번호 486"));
+
+
 
 
     // 기본 선택
     pCombo->SetCurSel(0);
+
     CComboBox* pDiffCombo = new CComboBox();
     pDiffCombo->Create(WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
-        CRect(440, 0, 560, 495), this, 1004);  // ID: 1003 (새로 부여)
+        CRect(200, rect.Height() - 100, 300, rect.Height() - 70), this, 1004);
 
     pDiffCombo->AddString(_T("Easy"));
     pDiffCombo->AddString(_T("Normal"));
     pDiffCombo->AddString(_T("Hard"));
     pDiffCombo->SetCurSel(1); // 기본 선택: Normal
 
+    pCombo->SetWindowPos(&wndTopMost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    pDiffCombo->SetWindowPos(&wndTopMost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    pButton->SetWindowPos(&wndTopMost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+
     // 게임 초기화
     InitGame();
+
+    // WebView2 초기화 추가
+    InitializeWebView2();
 
     return TRUE;
 }
@@ -275,6 +295,177 @@ void CMFC리듬게임Dlg::OnTimer(UINT_PTR nIDEvent)
 
     CDialogEx::OnTimer(nIDEvent);
 }
+// PlayYouTubeVideo 함수 구현
+BOOL CMFC리듬게임Dlg::PlayYouTubeVideo(const CString& youtubeURL)
+{
+    // 이미 재생 중인 브라우저가 있으면 중지
+    StopYouTubeVideo();
+
+    // 비디오 영역 설정
+    GetClientRect(&m_VideoRect);
+    m_VideoRect.bottom = m_VideoRect.bottom / 2;  // 상단 절반만 사용
+
+    try {
+        // 웹 브라우저 컨트롤 생성
+        HRESULT hr = CoCreateInstance(CLSID_InternetExplorer, NULL, CLSCTX_ALL,
+            IID_IWebBrowser2, (void**)&m_pWebBrowser);
+
+        if (FAILED(hr) || !m_pWebBrowser) {
+            AfxMessageBox(_T("웹 브라우저를 생성할 수 없습니다."));
+            return FALSE;
+        }
+
+        // 유튜브 비디오 ID 추출
+        CString videoID = ExtractYouTubeVideoID(youtubeURL);
+        if (videoID.IsEmpty()) {
+            AfxMessageBox(_T("유효한 YouTube URL이 아닙니다."));
+            return FALSE;
+        }
+
+        // HTML 컨텐츠 생성 (유튜브 임베드)
+        CString htmlContent;
+        htmlContent.Format(
+            _T("<html><head><style>body{margin:0;padding:0;overflow:hidden;background:black;}</style></head>")
+            _T("<body><iframe width=\"100%%\" height=\"100%%\" ")
+            _T("src=\"https://www.youtube.com/embed/%s?autoplay=1&controls=0&showinfo=0&rel=0\" ")
+            _T("frameborder=\"0\" allowfullscreen></iframe></body></html>"),
+            videoID);
+
+        // 브라우저 속성 설정
+        m_pWebBrowser->put_Silent(VARIANT_TRUE);  // 에러 메시지 숨기기
+        m_pWebBrowser->put_AddressBar(VARIANT_FALSE);
+        m_pWebBrowser->put_ToolBar(VARIANT_FALSE);
+        m_pWebBrowser->put_MenuBar(VARIANT_FALSE);
+        m_pWebBrowser->put_StatusBar(VARIANT_FALSE);
+        m_pWebBrowser->put_Visible(VARIANT_TRUE);
+
+        // 브라우저 위치 및 크기 설정
+        CRect rectWindow;
+        GetWindowRect(&rectWindow);
+        m_pWebBrowser->put_Left(rectWindow.left);
+        m_pWebBrowser->put_Top(rectWindow.top);
+        m_pWebBrowser->put_Width(m_VideoRect.Width());
+        m_pWebBrowser->put_Height(m_VideoRect.Height());
+
+        // 브라우저 열기
+        BSTR bstrURL = SysAllocString(L"about:blank");
+        VARIANT varEmpty;
+        VariantInit(&varEmpty);
+        hr = m_pWebBrowser->Navigate(bstrURL, &varEmpty, &varEmpty, &varEmpty, &varEmpty);
+        SysFreeString(bstrURL);
+
+        if (FAILED(hr)) {
+            AfxMessageBox(_T("웹 페이지 로드 실패"));
+            return FALSE;
+        }
+
+        // 브라우저가 로드될 때까지 대기
+        VARIANT_BOOL busy = VARIANT_TRUE;
+        while (busy == VARIANT_TRUE) {
+            m_pWebBrowser->get_Busy(&busy);
+            Sleep(50);
+        }
+
+        // 문서 객체 가져오기
+        CComPtr<IDispatch> pDisp;
+        hr = m_pWebBrowser->get_Document(&pDisp);
+        if (FAILED(hr) || !pDisp) {
+            AfxMessageBox(_T("문서 객체 가져오기 실패"));
+            return FALSE;
+        }
+
+        // HTML 문서 인터페이스 가져오기
+        CComQIPtr<IHTMLDocument2> pHTMLDoc = pDisp;
+        if (!pHTMLDoc) {
+            AfxMessageBox(_T("HTML 문서 인터페이스 가져오기 실패"));
+            return FALSE;
+        }
+
+        // HTML 문서에 내용 쓰기
+        BSTR bstrHTML = htmlContent.AllocSysString();
+        SAFEARRAY* psa = SafeArrayCreateVector(VT_VARIANT, 0, 1);
+        if (!psa) {
+            SysFreeString(bstrHTML);
+            AfxMessageBox(_T("SafeArray 생성 실패"));
+            return FALSE;
+        }
+
+        VARIANT* pVar;
+        hr = SafeArrayAccessData(psa, (void**)&pVar);
+        if (SUCCEEDED(hr)) {
+            pVar->vt = VT_BSTR;
+            pVar->bstrVal = bstrHTML;
+            SafeArrayUnaccessData(psa);
+
+            hr = pHTMLDoc->write(psa);
+            hr = pHTMLDoc->close();
+        }
+
+        SafeArrayDestroy(psa);
+        // bstrHTML은 SafeArray가 파괴될 때 자동으로 해제됨
+
+        TRACE(_T("YouTube 비디오 로드 성공: %s\n"), videoID);
+        return TRUE;
+    }
+    catch (_com_error& e) {
+        CString errorMsg;
+        errorMsg.Format(_T("COM 오류: 0x%08x - %s"), e.Error(), e.ErrorMessage());
+        AfxMessageBox(errorMsg);
+    }
+    catch (...) {
+        AfxMessageBox(_T("알 수 없는 오류 발생"));
+    }
+
+    return FALSE;
+}
+
+// StopYouTubeVideo 함수 구현
+void CMFC리듬게임Dlg::StopYouTubeVideo()
+{
+    if (m_pWebBrowser) {
+        // 브라우저 닫기
+        m_pWebBrowser->Quit();
+        m_pWebBrowser.Release();
+    }
+}
+
+// 유튜브 비디오 ID 추출 헬퍼 함수
+CString CMFC리듬게임Dlg::ExtractYouTubeVideoID(const CString& youtubeURL)
+{
+    TRACE(_T("유튜브 URL 파싱: %s\n"), youtubeURL);
+
+    // 단순화된 URL 형식 처리 (https://youtu.be/VIDEO_ID)
+    int slashPos = youtubeURL.ReverseFind('/');
+    if (slashPos != -1) {
+        CString videoID = youtubeURL.Mid(slashPos + 1);
+
+        // 물음표 이후 부분 제거
+        int qPos = videoID.Find(_T('?'));
+        if (qPos != -1) {
+            videoID = videoID.Left(qPos);
+        }
+
+        TRACE(_T("추출된 비디오 ID: %s\n"), videoID);
+        return videoID;
+    }
+
+    // 표준 유튜브 URL 형식 처리 (https://www.youtube.com/watch?v=VIDEO_ID)
+    int vPos = youtubeURL.Find(_T("v="));
+    if (vPos != -1) {
+        CString videoID = youtubeURL.Mid(vPos + 2);
+        int ampPos = videoID.Find(_T('&'));
+        if (ampPos != -1) {
+            videoID = videoID.Left(ampPos);
+        }
+
+        TRACE(_T("추출된 비디오 ID: %s\n"), videoID);
+        return videoID;
+    }
+
+    // 비디오 ID를 찾을 수 없음
+    AfxMessageBox(_T("유튜브 비디오 ID를 추출할 수 없습니다."));
+    return _T("");
+}
 
 void CMFC리듬게임Dlg::OnBnClickedButtonStart()
 {
@@ -284,22 +475,67 @@ void CMFC리듬게임Dlg::OnBnClickedButtonStart()
     CString songName;
     pCombo->GetLBText(sel, songName);
 
+    // 선택된 노래에 따라 파일 경로와 YouTube URL 설정
+    CString youtubeURL;
+
     // 선택된 노래에 따라 파일 경로 설정
     if (songName == _T("LOVE DIVE"))
+    {
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\LOVE DIVE.wav");
-    else if (songName == _T("Whiplash")) 
+        youtubeURL = _T("https://youtu.be/Y8JFxS1HlDo?si=kilAhsMeG0bDCqBK");
+    }
+    else if (songName == _T("Whiplash"))
+    {
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Whiplash.wav");
+        youtubeURL = _T("https://youtu.be/jWQx2f-CErU?si=OX7xzVGjKtSNLSD5");
+    }
     else if (songName == _T("HAPPY"))
+    {
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\HAPPY.wav");
+        youtubeURL = _T("https://youtu.be/2dFwndi4ung?si=rfr4O9QvhrzyPDhL");
+    }
     else if (songName == _T("Carly Rae Jepsen - Call Me Maybe"))
+    {
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Carly Rae Jepsen - Call Me Maybe.wav");
+        youtubeURL = _T("https://youtu.be/PPoHpGzcWLI?si=EfLuCVakVN3KvArL");
+    }
     else if (songName == _T("Dont Look Back In Anger"))
+    {
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Dont Look Back In Anger.wav");
+        youtubeURL = _T("https://youtu.be/cmpRLQZkTb8?si=KgaNIfbgEZRiga_W");
+    }
     else if (songName == _T("Shape Of You"))
+    {
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Shape Of You.wav");
+        youtubeURL = _T("https://youtu.be/JGwWNGJdvx8?si=u1i3QEX5_9_4vxZZ");
+    }
     else if (songName == _T("Viva la Vida"))
+    {
         m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\Viva la Vida.wav");
-    
+        youtubeURL = _T("https://youtu.be/dvgZkm1xWPE?si=ff6rygwpmnQhZ2_l");
+    }
+    else if (songName == _T("희망"))
+    {
+        m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\희망.wav");
+        youtubeURL = _T("https://youtu.be/izfFPpO7-Zo?si=ZK1NUl3RNccwSFPH");
+    }
+    else if (songName == _T("캐논"))
+    {
+        m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\캐논.wav");
+        youtubeURL = _T("https://youtu.be/QjA5faZF1A8?si=qXlbQ5pPFLXoaC3s");
+    }
+    else if (songName == _T("비밀번호 486"))
+    {
+        m_MusicPath = _T("E:\\source\\MFC_RhythmGame\\비밀번호 486.wav");
+        youtubeURL = _T("https://youtu.be/r5MM2iI8-58?si=ziyMWCtp8jmrl8f8");
+    }
+
+    // 모든 노래에 대해 YouTube URL 설정
+    if (!youtubeURL.IsEmpty())
+    {
+        NavigateWebView2(youtubeURL);  // 이 부분을 추가합니다!
+    }
+
     // 난이도 콤보박스에서 선택값 읽기
     CComboBox* pDiffCombo = (CComboBox*)GetDlgItem(1004);
     int diffSel = pDiffCombo->GetCurSel();
@@ -328,6 +564,7 @@ void CMFC리듬게임Dlg::OnBnClickedButtonStart()
     {
         KillTimer(1);
         StopMusic();
+        StopYouTubeVideo();
         m_GameStarted = false;
     }
 
@@ -410,6 +647,11 @@ void CMFC리듬게임Dlg::LoadNotes()
 // 노트 위치 업데이트
 void CMFC리듬게임Dlg::UpdateNotes()
 {
+    // 웹뷰 영역의 높이 계산
+    CRect rect;
+    GetClientRect(&rect);
+    int webViewHeight = rect.Height() / 4;  // 화면 높이의 1/4
+
     for (auto& note : m_Notes)
     {
         if (!note.IsHit())
@@ -422,8 +664,9 @@ void CMFC리듬게임Dlg::UpdateNotes()
 
             if (timeDiff <= visibleTimeDiff)
             {
-                // 노트 위치 계산 (판정선까지의 거리를 시간으로 나누어 계산)
-                double position = JUDGMENT_LINE_Y - (timeDiff / visibleTimeDiff) * (JUDGMENT_LINE_Y - 50);
+                // 노트 위치 계산 - 웹뷰 아래부터 시작하도록 조정
+                int startY = webViewHeight + 5;  // 레인 시작 위치와 동일하게
+                double position = JUDGMENT_LINE_Y - (timeDiff / visibleTimeDiff) * (JUDGMENT_LINE_Y - startY);
                 note.SetPosition(position);
 
                 // 노트가 판정선을 지나쳤는지 확인
@@ -575,7 +818,7 @@ void CMFC리듬게임Dlg::DrawGame(CDC* pDC)
     // 노트 그리기
     DrawNotes(pDC);
 
-    // 이펙트 그리기 (노트 위에 그려야 함)
+    // 이펙트 그리기
     DrawHitEffects(pDC);
 
     // 점수 표시
@@ -756,8 +999,19 @@ void CMFC리듬게임Dlg::OnBnClickedButtonSelectMusic()
 // 레인 그리기
 void CMFC리듬게임Dlg::DrawLanes(CDC* pDC, const CRect& rect)
 {
+    // 레인의 너비는 그대로 유지
+    int totalLaneWidth = LANE_COUNT * LANE_WIDTH;
+
+    // 화면 중앙에 레인 배치
     int centerX = rect.Width() / 2;
-    int laneStartX = centerX - (LANE_COUNT * LANE_WIDTH) / 2;
+    int laneStartX = centerX - (totalLaneWidth / 2);
+
+    // 웹뷰 영역의 높이 계산
+    int webViewHeight = rect.Height() / 4;  // 화면 높이의 1/4
+
+    // 레인 시작 Y 위치 - 웹뷰 바로 아래로 조정
+    int laneStartY = webViewHeight + 5;  // 약간의 여백만 두고 바로 시작
+
 
     // 각 레인 그리기
     for (int i = 0; i < LANE_COUNT; i++)
@@ -765,16 +1019,16 @@ void CMFC리듬게임Dlg::DrawLanes(CDC* pDC, const CRect& rect)
         int laneX = laneStartX + i * LANE_WIDTH;
 
         // 레인 배경 (그라데이션 효과)
-        for (int y = 50; y <= JUDGMENT_LINE_Y; y++)
+        for (int y = laneStartY; y <= JUDGMENT_LINE_Y; y++)
         {
-            int intensity = 30 + (y - 50) * 20 / (JUDGMENT_LINE_Y - 50);
+            int intensity = 30 + (y - laneStartY) * 20 / (JUDGMENT_LINE_Y - laneStartY);
             COLORREF color = RGB(intensity / 3, intensity / 2, intensity);
             pDC->FillSolidRect(laneX, y, LANE_WIDTH, 1, color);
         }
 
         // 레인 구분선 (밝은 색상)
-        pDC->FillSolidRect(laneX, 50, 1, JUDGMENT_LINE_Y - 50, RGB(80, 80, 100));
-        pDC->FillSolidRect(laneX + LANE_WIDTH - 1, 50, 1, JUDGMENT_LINE_Y - 50, RGB(80, 80, 100));
+        pDC->FillSolidRect(laneX, laneStartY, 1, JUDGMENT_LINE_Y - laneStartY, RGB(80, 80, 100));
+        pDC->FillSolidRect(laneX + LANE_WIDTH - 1, laneStartY, 1, JUDGMENT_LINE_Y - laneStartY, RGB(80, 80, 100));
 
         // 키 표시 (둥근 버튼 형태)
         CString keyText;
@@ -894,8 +1148,14 @@ void CMFC리듬게임Dlg::DrawScore(CDC* pDC)
     pDC->SetBkMode(TRANSPARENT);
     pDC->SetTextColor(RGB(255, 255, 255));
 
-    // 점수 배경 (둥근 모서리 패널)
-    CRect scorePanel(10, 10, 150, 50);
+    CRect rect;
+    GetClientRect(&rect);
+
+    // 웹뷰 높이 계산
+    int webViewHeight = rect.Height() / 4;
+
+    // 점수 배경 위치 수정 (웹뷰 아래로)
+    CRect scorePanel(10, webViewHeight + 10, 150, webViewHeight + 50);
     pDC->FillSolidRect(scorePanel, RGB(50, 50, 70));
     pDC->Draw3dRect(scorePanel, RGB(100, 100, 120), RGB(30, 30, 50));
 
@@ -1175,7 +1435,145 @@ void CMFC리듬게임Dlg::DrawHitEffects(CDC* pDC)
     }
 }
 
+bool CMFC리듬게임Dlg::InitializeWebView2()
+{
+    // 웹뷰 호스트 윈도우 생성
+    CRect rect;
+    GetClientRect(&rect);
 
+    // 웹뷰 크기를 상단 1/4 영역으로 설정
+    int webViewHeight = rect.Height() / 4;  // 화면 높이의 1/4
+
+    m_webViewHwnd = ::CreateWindowEx(
+        0, L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        0, 0, rect.Width(), webViewHeight,  // 상단 전체 너비, 1/4 높이
+        m_hWnd, NULL, AfxGetInstanceHandle(), NULL);
+
+    if (!m_webViewHwnd) {
+        AfxMessageBox(_T("웹뷰 호스트 윈도우 생성 실패"));
+        return false;
+    }
+
+    m_webViewWnd.Attach(m_webViewHwnd);
+
+    // WebView2 환경 생성
+    HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
+        nullptr, nullptr, nullptr,
+        Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+            [this](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
+                if (FAILED(result)) {
+                    AfxMessageBox(_T("WebView2 환경 생성 실패"));
+                    return result;
+                }
+
+                // 환경 저장
+                m_webViewEnvironment = environment;
+
+                // WebView2 컨트롤러 생성
+                environment->CreateCoreWebView2Controller(
+                    m_webViewHwnd,
+                    Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                        [this](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
+                            if (FAILED(result)) {
+                                AfxMessageBox(_T("WebView2 컨트롤러 생성 실패"));
+                                return result;
+                            }
+
+                            // 컨트롤러 저장
+                            m_webViewController = controller;
+
+                            // WebView2 가져오기
+                            controller->get_CoreWebView2(&m_webView);
+
+                            // WebView2 설정
+                            ICoreWebView2Settings* settings;
+                            m_webView->get_Settings(&settings);
+                            settings->put_IsScriptEnabled(TRUE);
+                            settings->put_AreDefaultScriptDialogsEnabled(TRUE);
+                            settings->put_IsWebMessageEnabled(TRUE);
+
+                            // 초기 크기 설정
+                            ResizeWebView();
+
+                            // WebView2를 배경으로 설정 (클릭 이벤트가 투과되도록)
+                            ::SetWindowLong(m_webViewHwnd, GWL_EXSTYLE,
+                                GetWindowLong(m_webViewHwnd, GWL_EXSTYLE) | WS_EX_TRANSPARENT);
+
+                            // WebView2를 Z-order의 가장 아래로 설정
+                            ::SetWindowPos(m_webViewHwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+
+                            // 컨트롤러 표시
+                            controller->put_IsVisible(TRUE);
+
+                            return S_OK;
+                        }).Get());
+                return S_OK;
+            }).Get());
+
+    if (FAILED(hr)) {
+        AfxMessageBox(_T("WebView2 환경 생성 시작 실패"));
+        return false;
+    }
+
+    return true;
+}
+
+void CMFC리듬게임Dlg::ResizeWebView()
+{
+    if (m_webViewController) {
+        RECT bounds;
+        ::GetClientRect(m_webViewHwnd, &bounds);
+        m_webViewController->put_Bounds(bounds);
+    }
+}
+
+bool CMFC리듬게임Dlg::NavigateWebView2(const CString& url)
+{
+    if (!m_webView) {
+        AfxMessageBox(_T("WebView2가 초기화되지 않았습니다."));
+        return false;
+    }
+
+    // 유튜브 임베드 URL 형식으로 변환 (기존 ExtractYouTubeVideoID 함수 활용)
+    CString videoID = ExtractYouTubeVideoID(url);
+    if (videoID.IsEmpty()) {
+        AfxMessageBox(_T("유효한 YouTube URL이 아닙니다."));
+        return false;
+    }
+
+    // 유튜브 임베드 HTML 생성
+    CString html;
+    html.Format(
+        L"<html><head><style>body{margin:0;padding:0;overflow:hidden;background:black;}</style></head>"
+        L"<body><iframe width=\"100%%\" height=\"100%%\" "
+        L"src=\"https://www.youtube.com/embed/%s?autoplay=1&mute=1&controls=1\" "
+        L"frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe></body></html>",
+        videoID);
+
+    // HTML 직접 설정 (임베드 URL로 직접 이동하는 대신 HTML 내용을 설정)
+    m_webView->NavigateToString(html.GetBuffer());
+
+    return true;
+}
+
+void CMFC리듬게임Dlg::CleanupWebView2()
+{
+    if (m_webViewController) {
+        m_webViewController->Close();
+    }
+    m_webView = nullptr;
+    m_webViewController = nullptr;
+    m_webViewEnvironment = nullptr;
+
+    if (m_webViewWnd) {
+        m_webViewWnd.Detach();
+    }
+
+    if (m_webViewHwnd && ::IsWindow(m_webViewHwnd)) {
+        ::DestroyWindow(m_webViewHwnd);
+        m_webViewHwnd = NULL;
+    }
+}
 bool CMFC리듬게임Dlg::PlayMusic(const CString& filePath)
 {
     // 이미 재생 중인 음악 중지
@@ -1255,4 +1653,7 @@ void CMFC리듬게임Dlg::OnDestroy()
 
     // 음악 정리
     StopMusic();
+    StopYouTubeVideo();
+
+    CleanupWebView2();
 }

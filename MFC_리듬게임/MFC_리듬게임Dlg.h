@@ -5,6 +5,11 @@
 #include <vector>
 #include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
+#include <exdisp.h>     // IWebBrowser2
+#include <exdispid.h>   // DISPID constants
+#include <mshtml.h>     // DOM interfaces
+#include <wrl.h>
+#include <WebView2.h>
 
 // 노트 클래스 정의
 class Note {
@@ -100,7 +105,7 @@ private:
 
     // 게임 관련 상수
     const int LANE_COUNT = 4;       // 레인 수
-    const int LANE_WIDTH = 80;      // 레인 너비
+    const int LANE_WIDTH = 100;      // 레인 너비
     const int NOTE_HEIGHT = 20;     // 노트 높이
     const double NOTE_SPEED = 200.0; // 노트 이동 속도 (픽셀/초)
     const int JUDGMENT_LINE_Y = 400; // 판정선 Y 위치
@@ -110,6 +115,13 @@ private:
     void StopMusic();
     double GetMusicDuration(const CString& filePath);
     double GetMusicPosition();
+
+    // 유튜브 비디오 관련 함수
+    BOOL PlayYouTubeVideo(const CString& youtubeURL);
+    void StopYouTubeVideo();
+    CString ExtractYouTubeVideoID(const CString& youtubeURL);
+    CComPtr<IWebBrowser2> m_pWebBrowser;  // 웹 브라우저 인터페이스
+    CRect m_VideoRect;  // 비디오 표시 영역
 
     // 그리기 관련 함수
     void DrawGame(CDC* pDC);
@@ -148,11 +160,21 @@ private:
     double m_BackgroundTransitionTime; // 배경 전환 시작 시간
     double m_BackgroundTransitionDuration; // 배경 전환 지속 시간
 
+    // WebView2 관련 변수
+    Microsoft::WRL::ComPtr<ICoreWebView2Environment> m_webViewEnvironment;
+    Microsoft::WRL::ComPtr<ICoreWebView2Controller> m_webViewController;
+    Microsoft::WRL::ComPtr<ICoreWebView2> m_webView;
+    HWND m_webViewHwnd;
+    CWnd m_webViewWnd;
+
+    // WebView2 관련 메서드
+    bool InitializeWebView2();
+    bool NavigateWebView2(const CString& url);
+    void ResizeWebView();
+    void CleanupWebView2();
 public:
     afx_msg void OnTimer(UINT_PTR nIDEvent);
     afx_msg void OnBnClickedButtonStart();
     afx_msg void OnDestroy();
     afx_msg void OnBnClickedButtonSelectMusic();
-
-
 };
